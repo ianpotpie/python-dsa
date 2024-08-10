@@ -390,14 +390,17 @@ def get_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--resolution",
-        type=int,
-        default=50,
-        help="Number of list sizes to test",
+        "--test",
+        "-t",
+        type=str,
+        nargs="*",
+        default=[fn for fn in fns_by_name],
+        help="Algorithms to include in testing",
     )
 
     parser.add_argument(
         "--min",
+        "-s",
         type=int,
         default=0,
         help="Start list size",
@@ -405,13 +408,23 @@ def get_args():
 
     parser.add_argument(
         "--max",
+        "-e",
         type=int,
         default=400,
         help="End list size",
     )
 
     parser.add_argument(
+        "--resolution",
+        "-r",
+        type=int,
+        default=50,
+        help="Number of list sizes to test",
+    )
+
+    parser.add_argument(
         "--n_trials",
+        "-n",
         type=int,
         default=50,
         help="Number of trials to average over",
@@ -419,6 +432,7 @@ def get_args():
 
     parser.add_argument(
         "--metric",
+        "-m",
         type=str,
         default="median",
         help="Metric to use for timing",
@@ -426,6 +440,7 @@ def get_args():
 
     parser.add_argument(
         "--distribution",
+        "-d",
         type=str,
         default="randint",
         help="Distribution of random numbers",
@@ -433,6 +448,7 @@ def get_args():
 
     parser.add_argument(
         "--params",
+        "-p",
         type=float,
         nargs="*",
         default=[0, 1000],
@@ -441,18 +457,11 @@ def get_args():
 
     parser.add_argument(
         "--blacklist",
+        "-b",
         type=str,
         nargs="*",
         default=["bogo_sort"],
         help="Algorithms to exclude from testing",
-    )
-
-    parser.add_argument(
-        "--test",
-        type=str,
-        nargs="*",
-        default=[fn for fn in fns_by_name],
-        help="Algorithms to include in testing",
     )
 
     return parser.parse_args()

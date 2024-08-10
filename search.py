@@ -178,6 +178,7 @@ def get_args():
 
     parser.add_argument(
         "--test",
+        "-t",
         type=str,
         nargs="*",
         default=[fn for fn in fns_by_name],
@@ -186,6 +187,7 @@ def get_args():
 
     parser.add_argument(
         "--min",
+        "-s",
         type=int,
         default=0,
         help="Start list size",
@@ -193,13 +195,15 @@ def get_args():
 
     parser.add_argument(
         "--max",
+        "-e",
         type=int,
-        default=1500,
+        default=400,
         help="End list size",
     )
 
     parser.add_argument(
         "--resolution",
+        "-r",
         type=int,
         default=50,
         help="Number of list sizes to test",
@@ -207,6 +211,7 @@ def get_args():
 
     parser.add_argument(
         "--n_trials",
+        "-n",
         type=int,
         default=50,
         help="Number of trials to average over",
@@ -214,13 +219,15 @@ def get_args():
 
     parser.add_argument(
         "--metric",
+        "-m",
         type=str,
         default="median",
-        help="Metric measured across trials",
+        help="Metric to use for timing",
     )
 
     parser.add_argument(
         "--distribution",
+        "-d",
         type=str,
         default="randint",
         help="Distribution of random numbers",
@@ -228,6 +235,7 @@ def get_args():
 
     parser.add_argument(
         "--params",
+        "-p",
         type=float,
         nargs="*",
         default=[0, 1000],
@@ -236,9 +244,10 @@ def get_args():
 
     parser.add_argument(
         "--blacklist",
+        "-b",
         type=str,
         nargs="*",
-        default=[],
+        default=["bogo_sort"],
         help="Algorithms to exclude from testing",
     )
 
