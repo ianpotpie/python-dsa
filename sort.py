@@ -1,7 +1,9 @@
+import argparse
 import random
 import time
 
 import matplotlib.pyplot as plt
+from scipy import stats
 
 # Simple sorting algorithms fast on small lists but slow on large lists
 
@@ -356,6 +358,91 @@ def bucket_sort(arr, n_buckets=10, sort_fn=None):
 # Timing functions
 
 
+fns_by_name = {
+    "bogo_sort": bogo_sort,
+    "insertion_sort": insertion_sort,
+    "selection_sort": selection_sort,
+    "bubble_sort": bubble_sort,
+    "shell_sort": shell_sort,
+    "merge_sort_simple": merge_sort_simple,
+    "merge_sort": merge_sort,
+    "quick_sort_simple": quick_sort_simple,
+    "quick_sort": quick_sort,
+    "heap_sort": heap_sort,
+    "tree_sort": tree_sort,
+    "tim_sort": tim_sort,
+    "counting_sort": counting_sort,
+    "radix_sort": radix_sort,
+    "bucket_sort": bucket_sort,
+}
+
+
+def get_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--resolution",
+        type=int,
+        default=50,
+        help="Number of list sizes to test",
+    )
+
+    parser.add_argument(
+        "--start",
+        type=int,
+        default=1,
+        help="Start list size",
+    )
+
+    parser.add_argument(
+        "--stop",
+        type=int,
+        default=1000,
+        help="End list size",
+    )
+
+    parser.add_argument(
+        "--n_trials",
+        type=int,
+        default=1,
+        help="Number of trials to average over",
+    )
+
+    parser.add_argument(
+        "--distribution",
+        type=str,
+        default="randint",
+        help="Distribution of random numbers"
+    )
+
+    parser.add_argument(
+        "--params",
+        type=int,
+        nargs="*",
+        default=[0, 1000],
+        help="Parameters for the random number distribution"
+    )
+
+    parser.add_argument(
+        "--blacklist",
+        type=str,
+        nargs="*",
+        default=["bogo_sort"],
+        help="Algorithms to exclude from testing"
+    )
+
+    parser.add_argument(
+        "--test",
+        type=str,
+        nargs="*",
+        default=[fn for fn in fns_by_name],
+        help="Algorithms to include in testing"
+    )
+
+    return parser.parse_args()
+
+    
+
 def time_functions(fns_by_name, n_trials, list_sizes, rand_fn):
     fn_times = {name: [] for name in fns_by_name}
     for name, fn in fns_by_name.items():
@@ -385,30 +472,20 @@ def plot_times(list_sizes, fn_times):
 
 
 if __name__ == "__main__":
-    resolution = 100
-    start = 10
-    end = 1000
-    step = (end - start) // resolution 
-    list_sizes = [sz for sz in range(start, end, step)]
-    n_trials = 50
-    rand_fn = lambda: random.randint(-1000, 1000)
-    fns_by_name = {
-        # "bogo_sort": bogo_sort,
-        "insertion_sort": insertion_sort,
-        "selection_sort": selection_sort,
-        "bubble_sort": bubble_sort,
-        "shell_sort": shell_sort,
-        "merge_sort_simple": merge_sort_simple,
-        "merge_sort": merge_sort,
-        "quick_sort_simple": quick_sort_simple,
-        "quick_sort": quick_sort,
-        "heap_sort": heap_sort,
-        "tree_sort": tree_sort,
-        "tim_sort": tim_sort,
-        "counting_sort": counting_sort,
-        "radix_sort": radix_sort,
-        "bucket_sort": bucket_sort,
-    }
+    args = get_args() 
+    print("Running with args:")
+    for arg, val in vars(args).items():
+        if isinstance(val, list):
+            prefix = len(f"    {arg}: ")
+            separator = ", \n" + " " * prefix
+            val = separator.join(str(element) for element in val)
+        print(f"    {arg}: {val}")
+    fns = {name: fn for name, fn in fns_by_name.items() if name in args.test and name not in args.blacklist}
+    step = (args.stop - args.start) // args.resolution
+    list_sizes = [sz for sz in range(args.start, args.stop, step)]
+    distribution = getattr(stats, args.distribution)(*args.params)
+    rand_fn = lambda: distribution.rvs()
 
-    fn_times = time_functions(fns_by_name, n_trials, list_sizes, rand_fn)
+    print("\nTiming functions")
+    fn_times = time_functions(fns, args.n_trials, list_sizes, rand_fn)
     plot_times(list_sizes, fn_times)
