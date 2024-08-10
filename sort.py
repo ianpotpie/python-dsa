@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 # Simple sorting algorithms fast on small lists but slow on large lists
 
 
-def bogosort(arr):
+def bogo_sort(arr):
     while any(arr[i] > arr[i + 1] for i in range(len(arr) - 1)):
         random.shuffle(arr)
 
@@ -269,24 +269,23 @@ def tree_sort(arr):
 
 
 def counting_sort(arr):
-    n = len(arr)
-    output = [0] * n
-    count = [0] * (max(arr) + 1)
+    max_val = max(arr)
+    min_val = min(arr)
+    counts = [0] * (max_val - min_val + 1)
 
-    for i in range(n):
-        count[arr[i]] += 1
+    for val in arr:
+        counts[val - min_val] += 1
 
-    for i in range(1, len(count)):
-        count[i] += count[i - 1]
+    for i in range(1, len(counts)):
+        counts[i] += counts[i - 1]
 
-    i = n - 1
-    while i >= 0:
-        output[count[arr[i]] - 1] = arr[i]
-        count[arr[i]] -= 1
-        i -= 1
+    output = [0] * len(arr)
+    for val in reversed(arr):
+        output[counts[val - min_val] - 1] = val
+        counts[val - min_val] -= 1
 
-    for i in range(n):
-        arr[i] = output[i]
+    for i, val in enumerate(output):
+        arr[i] = val
 
 
 def radix_sort(arr, radix=10):
@@ -312,11 +311,18 @@ def radix_sort(arr, radix=10):
         for i in range(n):
             arr[i] = output[i]
 
-    max_val = max(arr)
+    max_val = max(arr, key=abs)
     exp = 1
+    negatives = [-x for x in arr if x < 0]
+    positives = [x for x in arr if x >= 0]
     while max_val // exp > 0:
-        counting_sort(arr, exp)
+        counting_sort(negatives, exp)
+        counting_sort(positives, exp)
         exp *= radix
+
+    negatives = [-x for x in reversed(negatives)]
+    for i, val in enumerate(negatives + positives):
+        arr[i] = val
 
 
 def bucket_sort(arr, n_buckets=10, sort_fn=None):
@@ -379,10 +385,15 @@ def plot_times(list_sizes, fn_times):
 
 
 if __name__ == "__main__":
-    list_sizes = [sz for sz in range(1, 200, 1)]
+    resolution = 100
+    start = 10
+    end = 1000
+    step = (end - start) // resolution 
+    list_sizes = [sz for sz in range(start, end, step)]
     n_trials = 50
-    rand_fn = lambda: random.randint(0, 1000)
+    rand_fn = lambda: random.randint(-1000, 1000)
     fns_by_name = {
+        # "bogo_sort": bogo_sort,
         "insertion_sort": insertion_sort,
         "selection_sort": selection_sort,
         "bubble_sort": bubble_sort,
