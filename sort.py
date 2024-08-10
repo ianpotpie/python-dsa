@@ -3,8 +3,8 @@ import random
 import time
 
 import matplotlib.pyplot as plt
+import numpy
 from scipy import stats
-from scipy.ndimage import median
 
 # Simple sorting algorithms fast on small lists but slow on large lists
 
@@ -235,6 +235,9 @@ def tim_sort(arr, min_run=32):
 
 
 def tree_sort(arr):
+    if len(arr) <= 1:
+        return
+
     class Node:
         def __init__(self, val):
             self.val = val
@@ -272,6 +275,9 @@ def tree_sort(arr):
 
 
 def counting_sort(arr):
+    if len(arr) <= 1:
+        return
+
     max_val = max(arr)
     min_val = min(arr)
     counts = [0] * (max_val - min_val + 1)
@@ -292,6 +298,9 @@ def counting_sort(arr):
 
 
 def radix_sort(arr, radix=10):
+    if len(arr) <= 1:
+        return
+
     def counting_sort(arr, exp):
         n = len(arr)
         output = [0] * n
@@ -388,14 +397,14 @@ def get_args():
     )
 
     parser.add_argument(
-        "--start",
+        "--min",
         type=int,
-        default=1,
+        default=0,
         help="Start list size",
     )
 
     parser.add_argument(
-        "--stop",
+        "--max",
         type=int,
         default=400,
         help="End list size",
@@ -406,6 +415,13 @@ def get_args():
         type=int,
         default=50,
         help="Number of trials to average over",
+    )
+
+    parser.add_argument(
+        "--metric",
+        type=str,
+        default="median",
+        help="Metric to use for timing",
     )
 
     parser.add_argument(
@@ -442,13 +458,16 @@ def get_args():
     return parser.parse_args()
 
 
-def time_functions(fns_by_name, n_trials, list_sizes, rand_fn):
+def time_functions(fns_by_name, n_trials, list_sizes, rand_fn, metric):
     fn_times = {name: len(list_sizes) * [[]] for name in fns_by_name}
 
     for i, list_size in enumerate(list_sizes):
         for j in range(n_trials):
+            j_justified = str(j + 1).rjust(len(str(n_trials)), " ")
+            i_justified = str(i + 1).rjust(len(str(len(list_sizes))), " ")
+            size_justified = str(list_size).rjust(len(str(list_sizes[-1])), " ")
             print(
-                f"\33[2K\rTiming trial {j+1}/{n_trials} on list size {i+1}/{len(list_sizes)} (curr: {list_size}, max: {list_sizes[-1]})",
+                f"\33[2K\rTiming trial {j_justified}/{n_trials} on list size {i_justified}/{len(list_sizes)} (curr: {size_justified}, max: {list_sizes[-1]})",
                 end="",
             )
 
@@ -461,16 +480,16 @@ def time_functions(fns_by_name, n_trials, list_sizes, rand_fn):
                 fn_times[name][i].append(end - start)
 
         for fn in fn_times:
-            fn_times[fn][i] = median(fn_times[fn][i])
+            fn_times[fn][i] = metric(fn_times[fn][i])
 
     return fn_times
 
 
-def plot_times(list_sizes, fn_times):
+def plot_times(list_sizes, fn_times, metric):
     for name, times in fn_times.items():
         plt.plot(list_sizes, times, label=name)
-    plt.ylabel("Median Time (s)")
-    plt.xlabel("List Size")
+    plt.ylabel(f"{metric} time (s)")
+    plt.xlabel("list size")
     plt.legend()
     plt.show()
 
@@ -490,12 +509,16 @@ if __name__ == "__main__":
         for name, fn in fns_by_name.items()
         if name in args.test and name not in args.blacklist
     }
-    step = (args.stop - args.start) // args.resolution
-    list_sizes = [sz for sz in range(args.start, args.stop, step)]
+    step = (args.max - args.min) // args.resolution
+    list_sizes = [
+        round(i * (args.max - args.min) / args.resolution + args.min)
+        for i in range(args.resolution + 1)
+    ]
     distribution = getattr(stats, args.distribution)(*args.params)
     rand_fn = lambda: distribution.rvs()
+    metric = getattr(numpy, args.metric)
 
     print("\nTiming functions")
-    fn_times = time_functions(fns, args.n_trials, list_sizes, rand_fn)
-    plot_times(list_sizes, fn_times)
+    fn_times = time_functions(fns, args.n_trials, list_sizes, rand_fn, metric)
+    plot_times(list_sizes, fn_times, args.metric)
     print()
