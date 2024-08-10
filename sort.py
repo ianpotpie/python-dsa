@@ -4,6 +4,7 @@ import time
 
 import matplotlib.pyplot as plt
 from scipy import stats
+from scipy.ndimage import median
 
 # Simple sorting algorithms fast on small lists but slow on large lists
 
@@ -357,23 +358,23 @@ def bucket_sort(arr, n_buckets=10, sort_fn=None):
 
 # Timing functions
 
-
+# sorted by their speed on a 10k list of uniform integers 0-1000
 fns_by_name = {
     "bogo_sort": bogo_sort,
+    "bubble_sort": bubble_sort,
     "insertion_sort": insertion_sort,
     "selection_sort": selection_sort,
-    "bubble_sort": bubble_sort,
-    "shell_sort": shell_sort,
     "merge_sort_simple": merge_sort_simple,
-    "merge_sort": merge_sort,
-    "quick_sort_simple": quick_sort_simple,
-    "quick_sort": quick_sort,
     "heap_sort": heap_sort,
     "tree_sort": tree_sort,
+    "shell_sort": shell_sort,
+    "quick_sort": quick_sort,
+    "merge_sort": merge_sort,
     "tim_sort": tim_sort,
-    "counting_sort": counting_sort,
+    "quick_sort_simple": quick_sort_simple,
     "radix_sort": radix_sort,
     "bucket_sort": bucket_sort,
+    "counting_sort": counting_sort,
 }
 
 
@@ -397,14 +398,14 @@ def get_args():
     parser.add_argument(
         "--stop",
         type=int,
-        default=1000,
+        default=400,
         help="End list size",
     )
 
     parser.add_argument(
         "--n_trials",
         type=int,
-        default=1,
+        default=50,
         help="Number of trials to average over",
     )
 
@@ -412,15 +413,15 @@ def get_args():
         "--distribution",
         type=str,
         default="randint",
-        help="Distribution of random numbers"
+        help="Distribution of random numbers",
     )
 
     parser.add_argument(
         "--params",
-        type=int,
+        type=float,
         nargs="*",
         default=[0, 1000],
-        help="Parameters for the random number distribution"
+        help="Parameters for the random number distribution",
     )
 
     parser.add_argument(
@@ -428,7 +429,7 @@ def get_args():
         type=str,
         nargs="*",
         default=["bogo_sort"],
-        help="Algorithms to exclude from testing"
+        help="Algorithms to exclude from testing",
     )
 
     parser.add_argument(
@@ -436,43 +437,48 @@ def get_args():
         type=str,
         nargs="*",
         default=[fn for fn in fns_by_name],
-        help="Algorithms to include in testing"
+        help="Algorithms to include in testing",
     )
 
     return parser.parse_args()
 
-    
 
 def time_functions(fns_by_name, n_trials, list_sizes, rand_fn):
-    fn_times = {name: [] for name in fns_by_name}
-    for name, fn in fns_by_name.items():
-        avg_times = []
-        for i, list_size in enumerate(list_sizes):
-            print(f"\33[2K\rTiming {name} with list {i+1}/{len(list_sizes)}", end="")
-            times = []
-            for _ in range(n_trials):
-                lst = [rand_fn() for _ in range(list_size)]
+    fn_times = {name: len(list_sizes) * [[]] for name in fns_by_name}
+
+    for i, list_size in enumerate(list_sizes):
+        for j in range(n_trials):
+            print(
+                f"\33[2K\rTiming trial {j+1}/{n_trials} on list size {i+1}/{len(list_sizes)} (curr: {list_size}, max: {list_sizes[-1]})",
+                end="",
+            )
+
+            lst = [rand_fn() for _ in range(list_size)]
+            for name, fn in fns_by_name.items():
+                cpy = lst.copy()
                 start = time.perf_counter()
-                fn(lst)
+                fn(cpy)
                 end = time.perf_counter()
-                times.append(end - start)
-            avg_times.append(sum(times) / n_trials)
-        print()
-        fn_times[name] = avg_times
+                fn_times[name][i].append(end - start)
+
+        for fn in fn_times:
+            fn_times[fn][i] = median(fn_times[fn][i])
+
     return fn_times
 
 
 def plot_times(list_sizes, fn_times):
     for name, times in fn_times.items():
         plt.plot(list_sizes, times, label=name)
-    plt.ylabel("Average Time (s)")
+    plt.ylabel("Median Time (s)")
     plt.xlabel("List Size")
     plt.legend()
     plt.show()
 
 
 if __name__ == "__main__":
-    args = get_args() 
+    args = get_args()
+    args.params = [int(param) if param.is_integer() else param for param in args.params]
     print("Running with args:")
     for arg, val in vars(args).items():
         if isinstance(val, list):
@@ -480,7 +486,11 @@ if __name__ == "__main__":
             separator = ", \n" + " " * prefix
             val = separator.join(str(element) for element in val)
         print(f"    {arg}: {val}")
-    fns = {name: fn for name, fn in fns_by_name.items() if name in args.test and name not in args.blacklist}
+    fns = {
+        name: fn
+        for name, fn in fns_by_name.items()
+        if name in args.test and name not in args.blacklist
+    }
     step = (args.stop - args.start) // args.resolution
     list_sizes = [sz for sz in range(args.start, args.stop, step)]
     distribution = getattr(stats, args.distribution)(*args.params)
@@ -489,3 +499,4 @@ if __name__ == "__main__":
     print("\nTiming functions")
     fn_times = time_functions(fns, args.n_trials, list_sizes, rand_fn)
     plot_times(list_sizes, fn_times)
+    print()
