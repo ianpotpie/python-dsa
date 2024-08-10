@@ -358,7 +358,6 @@ def bucket_sort(arr, n_buckets=10, sort_fn=None):
 
 # Timing functions
 
-# sorted by their speed on a 10k list of uniform integers 0-1000
 fns_by_name = {
     "bogo_sort": bogo_sort,
     "bubble_sort": bubble_sort,
