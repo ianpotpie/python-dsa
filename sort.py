@@ -3,8 +3,9 @@ import multiprocessing as mp
 import random
 import time
 import tracemalloc
+from collections.abc import Callable
 from functools import partial
-from typing import Any, Protocol, TypeVar
+from typing import Any, Protocol, Tuple, TypeVar
 
 import matplotlib.pyplot as plt
 import numpy
@@ -833,7 +834,7 @@ def bucket_sort(
 
 # Timing functions
 
-fns_by_name = {
+fn_by_name = {
     "bogo_sort": bogo_sort,
     "bubble_sort": bubble_sort,
     "comb_sort": comb_sort,
@@ -860,7 +861,7 @@ def get_args():
         "-t",
         type=str,
         nargs="*",
-        default=[fn for fn in fns_by_name],
+        default=[fn for fn in fn_by_name],
         help="Algorithms to include in testing",
     )
 
@@ -884,7 +885,7 @@ def get_args():
         "--end",
         "-e",
         type=int,
-        default=400,
+        default=1000,
         help="End list size",
     )
 
@@ -892,7 +893,7 @@ def get_args():
         "--resolution",
         "-r",
         type=int,
-        default=50,
+        default=20,
         help="Number of list sizes to test between min and max",
     )
 
@@ -900,16 +901,16 @@ def get_args():
         "--n_samples",
         "-n",
         type=int,
-        default=50,
+        default=100,
         help="Number of samples per list size (over which to take statistics)",
     )
 
     parser.add_argument(
-        "--measure",
+        "--metric",
         "-m",
         type=str,
         default="median",
-        help="Statistical measure applied to samples (mean, median, max, min)",
+        help="Statistic applied to samples (mean, median, max, min)",
     )
 
     parser.add_argument(
@@ -941,80 +942,102 @@ def get_args():
     return parser.parse_args()
 
 
-def func_time(fn, *args, **kwargs):
+def func_time(fn: Callable, *args, **kwargs) -> float:
     start = time.perf_counter()
     fn(*args, **kwargs)
     end = time.perf_counter()
     return end - start
 
 
-def func_memory(fn, *args, **kwargs):
+def func_memory(fn: Callable, *args, **kwargs) -> float:
     tracemalloc.start()
     fn(*args, **kwargs)
     _, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
-    return peak
+    return float(peak)
 
 
-def run_benchmark(list_sz, criteria, fns_by_name, n_samples, stat_fn, rand_fn):
-    samples_by_fn = {name: [] for name in fns_by_name}
+def benchmark_on_listsz(
+    list_sz: int,
+    criteria: str,
+    fn_by_name: dict[str, Callable],
+    n_samples: int,
+    metric_fn: Callable[[list[float]], float],
+    rand_fn: Callable[[], float],
+) -> Tuple[int, dict[str, float]]:
+    samples_by_fn = {name: [] for name in fn_by_name}
     for _ in range(n_samples):
         # generating a large list of random numbers is expensive
         # so we generate on per sample and copy it for each function we test
         lst = [rand_fn() for _ in range(list_sz)]
-        for name, fn in fns_by_name.items():
+        for name, fn in fn_by_name.items():
             cpy = lst.copy()
             if criteria == "time":
                 samples_by_fn[name].append(func_time(fn, cpy))
             if criteria == "memory":
                 samples_by_fn[name].append(func_memory(fn, cpy))
 
-    return list_sz, {name: stat_fn(samples) for name, samples in samples_by_fn.items()}
+    measurement_by_fn = {
+        name: metric_fn(samples) for name, samples in samples_by_fn.items()
+    }
+
+    return list_sz, measurement_by_fn
 
 
-def benchmark_functions(fns_by_name, n_samples, list_sizes, rand_fn, criteria, stat_fn):
+def benchmark_functions(
+    fn_by_name: dict[str, Callable],
+    n_samples: int,
+    list_sizes: list[int],
+    rand_fn: Callable[..., float],
+    criteria: str,
+    metric_fn: Callable[[list[float]], float],
+) -> dict[str, list[float]]:
+    measurements_by_fn = {name: [0.0] * len(list_sizes) for name in fn_by_name}
+
     with mp.Pool() as pool:
-        benchmark_func = partial(
-            run_benchmark,
+        run_benchmark = partial(
+            benchmark_on_listsz,
             criteria=criteria,
-            fns_by_name=fns_by_name,
+            fn_by_name=fn_by_name,
             n_samples=n_samples,
-            stat_fn=stat_fn,
+            metric_fn=metric_fn,
             rand_fn=rand_fn,
         )
 
-        results = []
-        for i, result in enumerate(pool.imap_unordered(benchmark_func, list_sizes)):
-            results.append(result)
-            print(f"\33[2K\rCompleted {i+1}/{len(list_sizes)} list sizes", end="")
+        results = pool.imap_unordered(run_benchmark, list_sizes)
+        count = 0
+        for list_sz, measurement_by_fn in results:
+            i = list_sizes.index(list_sz)
+            for name, measurement in measurement_by_fn.items():
+                measurements = measurements_by_fn[name]
+                measurements[i] = measurement
+            count += 1
+            print(f"\33[2K\rCompleted {count}/{len(list_sizes)} list sizes", end="")
 
-    # Reorganize results
-    fn_benchmarks = {name: [None] * len(list_sizes) for name in fns_by_name}
-    for list_sz, stats_by_fn in results:
-        i = list_sizes.index(list_sz)
-        for name, value in stats_by_fn.items():
-            fn_benchmarks[name][i] = value
-
-    return fn_benchmarks
+    return measurements_by_fn
 
 
 def plot_benchmark(
     list_sizes: list[int],
-    fn_benchmarks: dict[str, list[int | float]],
+    measurements_by_fn: dict[str, list[float]],
     criteria: str,
-    stat: str,
-):
-    for name, benchmarks in fn_benchmarks.items():
-        plt.plot(list_sizes, benchmarks, label=name)
-    plt.ylabel(f"{stat} {criteria} ({'seconds' if criteria == 'time' else 'bytes'})")
+    metric: str,
+) -> None:
+    for name, measurements in measurements_by_fn.items():
+        plt.plot(list_sizes, measurements, label=name)
+    plt.ylabel(f"{metric} {criteria} ({'seconds' if criteria == 'time' else 'bytes'})")
     plt.xlabel("list size")
     plt.legend()
     plt.show()
 
 
 if __name__ == "__main__":
+
+    # get the script arguments
     args = get_args()
     args.params = [int(param) if param.is_integer() else param for param in args.params]
+
+    # print the arguments
     print("Running with args:")
     for arg, val in vars(args).items():
         if isinstance(val, list):
@@ -1022,23 +1045,29 @@ if __name__ == "__main__":
             separator = ", \n" + " " * prefix
             val = separator.join(str(element) for element in val)
         print(f"    {arg}: {val}")
+
+    # collect the functions to test
     fns = {
         name: fn
-        for name, fn in fns_by_name.items()
+        for name, fn in fn_by_name.items()
         if name in args.test and name not in args.blacklist
     }
+
+    # setup the list sizes to test on
     step = (args.end - args.start) // args.resolution
     list_sizes = [
         round(i * (args.end - args.start) / args.resolution + args.start)
         for i in range(args.resolution + 1)
     ]
+
+    # setup statistical tools
     distribution = getattr(stats, args.distribution)(*args.params)
     rand_fn = distribution.rvs
-    stat_fn = getattr(numpy, args.measure)
+    metric_fn = getattr(numpy, args.metric)
 
-    print("\nTiming functions")
-    fn_times = benchmark_functions(
-        fns, args.n_samples, list_sizes, rand_fn, args.criteria, stat_fn
+    print("\nBenchmarking functions")
+    measurements_by_fn = benchmark_functions(
+        fns, args.n_samples, list_sizes, rand_fn, args.criteria, metric_fn
     )
     print()
-    plot_benchmark(list_sizes, fn_times, args.criteria, args.measure)
+    plot_benchmark(list_sizes, measurements_by_fn, args.criteria, args.metric)
