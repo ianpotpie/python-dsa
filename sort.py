@@ -21,6 +21,59 @@ def bubble_sort(arr):
                 arr[j], arr[j + 1] = arr[j + 1], arr[j]
 
 
+def cycle_sort(arr: list) -> None:
+    """
+    Perform an in-place cycle sort on the input array.
+
+    Cycle sort is an in-place, unstable sorting algorithm that is particularly useful
+    when memory writes are costly. It minimizes the number of memory writes to sort
+    an array.
+
+    Args:
+        arr (list): The input list to be sorted.
+
+    Returns:
+        list: The sorted list (note that the input list is sorted in-place).
+
+    Time complexity: O(n^2) in all cases, where n is the number of elements.
+    Space complexity: O(1) as it's an in-place sorting algorithm.
+
+    Example:
+    >>> arr = [5, 2, 1, 8, 4, 7, 6, 3]
+    >>> cycle_sort(arr)
+    [1, 2, 3, 4, 5, 6, 7, 8]
+    """
+    # loop through the array to find cycles
+    for cycle_start in range(len(arr) - 1):
+        item = arr[cycle_start]
+
+        # find where to put the item
+        pos = cycle_start
+        for i in range(cycle_start + 1, len(arr)):
+            if arr[i] < item:
+                pos += 1
+
+        # the item is already in the correct position
+        if pos == cycle_start:
+            continue
+
+        # put the item where it goes (after any duplicates)
+        while item == arr[pos]:
+            pos += 1
+        arr[pos], item = item, arr[pos]
+
+        # rotate the rest of the cycle
+        while pos != cycle_start:
+            pos = cycle_start
+            for i in range(cycle_start + 1, len(arr)):
+                if arr[i] < item:
+                    pos += 1
+
+            while item == arr[pos]:
+                pos += 1
+            arr[pos], item = item, arr[pos]
+
+
 def selection_sort(arr):
     for i in range(len(arr)):
         min_idx = i
