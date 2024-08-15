@@ -1,10 +1,12 @@
 import argparse
 import random
 import time
+import tracemalloc
 from typing import Any, Protocol, TypeVar
 
 import matplotlib.pyplot as plt
 import numpy
+from memory_profiler import memory_usage
 from scipy import stats
 
 
@@ -862,7 +864,15 @@ def get_args():
     )
 
     parser.add_argument(
-        "--min",
+        "--criteria",
+        "-c",
+        type=str,
+        default="time",
+        help="Criteria to benchmark (time, memory)",
+    )
+
+    parser.add_argument(
+        "--start",
         "-s",
         type=int,
         default=0,
@@ -870,7 +880,7 @@ def get_args():
     )
 
     parser.add_argument(
-        "--max",
+        "--end",
         "-e",
         type=int,
         default=400,
@@ -882,23 +892,23 @@ def get_args():
         "-r",
         type=int,
         default=50,
-        help="Number of list sizes to test",
+        help="Number of list sizes to test between min and max",
     )
 
     parser.add_argument(
-        "--n_trials",
+        "--n_samples",
         "-n",
         type=int,
         default=50,
-        help="Number of trials to average over",
+        help="Number of samples per list size (over which to take statistics)",
     )
 
     parser.add_argument(
-        "--metric",
+        "--measure",
         "-m",
         type=str,
         default="median",
-        help="Metric to use for timing",
+        help="Statistical measure applied to samples (mean, median, max, min)",
     )
 
     parser.add_argument(
@@ -906,7 +916,7 @@ def get_args():
         "-d",
         type=str,
         default="randint",
-        help="Distribution of random numbers",
+        help="Probability distribution to use for list numbers (uniform, randint, poisson, etc.)",
     )
 
     parser.add_argument(
@@ -915,7 +925,7 @@ def get_args():
         type=float,
         nargs="*",
         default=[0, 1000],
-        help="Parameters for the random number distribution",
+        help="Parameters for the probability distribution",
     )
 
     parser.add_argument(
@@ -930,37 +940,45 @@ def get_args():
     return parser.parse_args()
 
 
-def time_functions(fns_by_name, n_trials, list_sizes, rand_fn, metric):
-    fn_times = {name: len(list_sizes) * [[]] for name in fns_by_name}
+def benchmark_functions(fns_by_name, n_samples, list_sizes, rand_fn, criteria, stat_fn):
+    fn_benchmarks = {name: len(list_sizes) * [[]] for name in fns_by_name}
 
     for i, list_size in enumerate(list_sizes):
-        for j in range(n_trials):
-            j_justified = str(j + 1).rjust(len(str(n_trials)), " ")
+        for j in range(n_samples):
+            j_justified = str(j + 1).rjust(len(str(n_samples)), " ")
             i_justified = str(i + 1).rjust(len(str(len(list_sizes))), " ")
             size_justified = str(list_size).rjust(len(str(list_sizes[-1])), " ")
             print(
-                f"\33[2K\rTiming trial {j_justified}/{n_trials} on list size {i_justified}/{len(list_sizes)} (curr: {size_justified}, max: {list_sizes[-1]})",
+                f"\33[2K\rRunning trial {j_justified}/{n_samples} on list size {i_justified}/{len(list_sizes)} (curr: {size_justified}, max: {list_sizes[-1]})",
                 end="",
             )
 
             lst = [rand_fn() for _ in range(list_size)]
             for name, fn in fns_by_name.items():
                 cpy = lst.copy()
-                start = time.perf_counter()
-                fn(cpy)
-                end = time.perf_counter()
-                fn_times[name][i].append(end - start)
+                if criteria == "time":
+                    start = time.perf_counter()
+                    fn(cpy)
+                    end = time.perf_counter()
+                    fn_benchmarks[name][i].append(end - start)
 
-        for fn in fn_times:
-            fn_times[fn][i] = metric(fn_times[fn][i])
+                if criteria == "memory":
+                    tracemalloc.start()
+                    fn(cpy, inplace=True)
+                    _, peak = tracemalloc.get_traced_memory()
+                    tracemalloc.stop()
+                    fn_benchmarks[name][i].append(peak)
 
-    return fn_times
+        for fn in fn_benchmarks:
+            fn_benchmarks[fn][i] = stat_fn(fn_benchmarks[fn][i])
+
+    return fn_benchmarks
 
 
-def plot_times(list_sizes, fn_times, metric):
+def plot_benchmark(list_sizes, fn_times, criteria, stat):
     for name, times in fn_times.items():
         plt.plot(list_sizes, times, label=name)
-    plt.ylabel(f"{metric} time (s)")
+    plt.ylabel(f"{stat} {criteria} ({'seconds' if criteria == 'time' else 'bytes'})")
     plt.xlabel("list size")
     plt.legend()
     plt.show()
@@ -981,16 +999,18 @@ if __name__ == "__main__":
         for name, fn in fns_by_name.items()
         if name in args.test and name not in args.blacklist
     }
-    step = (args.max - args.min) // args.resolution
+    step = (args.end - args.start) // args.resolution
     list_sizes = [
-        round(i * (args.max - args.min) / args.resolution + args.min)
+        round(i * (args.end - args.start) / args.resolution + args.start)
         for i in range(args.resolution + 1)
     ]
     distribution = getattr(stats, args.distribution)(*args.params)
     rand_fn = lambda: distribution.rvs()
-    metric = getattr(numpy, args.metric)
+    stat_fn = getattr(numpy, args.measure)
 
     print("\nTiming functions")
-    fn_times = time_functions(fns, args.n_trials, list_sizes, rand_fn, metric)
-    plot_times(list_sizes, fn_times, args.metric)
+    fn_times = benchmark_functions(
+        fns, args.n_samples, list_sizes, rand_fn, args.criteria, stat_fn
+    )
     print()
+    plot_benchmark(list_sizes, fn_times, args.criteria, args.measure)
