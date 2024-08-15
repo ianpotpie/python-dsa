@@ -1,12 +1,13 @@
 import argparse
+import multiprocessing as mp
 import random
 import time
 import tracemalloc
+from functools import partial
 from typing import Any, Protocol, TypeVar
 
 import matplotlib.pyplot as plt
 import numpy
-from memory_profiler import memory_usage
 from scipy import stats
 
 
@@ -940,44 +941,71 @@ def get_args():
     return parser.parse_args()
 
 
+def func_time(fn, *args, **kwargs):
+    start = time.perf_counter()
+    fn(*args, **kwargs)
+    end = time.perf_counter()
+    return end - start
+
+
+def func_memory(fn, *args, **kwargs):
+    tracemalloc.start()
+    fn(*args, **kwargs)
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    return peak
+
+
+def run_benchmark(list_sz, criteria, fns_by_name, n_samples, stat_fn, rand_fn):
+    samples_by_fn = {name: [] for name in fns_by_name}
+    for _ in range(n_samples):
+        # generating a large list of random numbers is expensive
+        # so we generate on per sample and copy it for each function we test
+        lst = [rand_fn() for _ in range(list_sz)]
+        for name, fn in fns_by_name.items():
+            cpy = lst.copy()
+            if criteria == "time":
+                samples_by_fn[name].append(func_time(fn, cpy))
+            if criteria == "memory":
+                samples_by_fn[name].append(func_memory(fn, cpy))
+
+    return list_sz, {name: stat_fn(samples) for name, samples in samples_by_fn.items()}
+
+
 def benchmark_functions(fns_by_name, n_samples, list_sizes, rand_fn, criteria, stat_fn):
-    fn_benchmarks = {name: len(list_sizes) * [[]] for name in fns_by_name}
+    with mp.Pool() as pool:
+        benchmark_func = partial(
+            run_benchmark,
+            criteria=criteria,
+            fns_by_name=fns_by_name,
+            n_samples=n_samples,
+            stat_fn=stat_fn,
+            rand_fn=rand_fn,
+        )
 
-    for i, list_size in enumerate(list_sizes):
-        for j in range(n_samples):
-            j_justified = str(j + 1).rjust(len(str(n_samples)), " ")
-            i_justified = str(i + 1).rjust(len(str(len(list_sizes))), " ")
-            size_justified = str(list_size).rjust(len(str(list_sizes[-1])), " ")
-            print(
-                f"\33[2K\rRunning trial {j_justified}/{n_samples} on list size {i_justified}/{len(list_sizes)} (curr: {size_justified}, max: {list_sizes[-1]})",
-                end="",
-            )
+        results = []
+        for i, result in enumerate(pool.imap_unordered(benchmark_func, list_sizes)):
+            results.append(result)
+            print(f"\33[2K\rCompleted {i+1}/{len(list_sizes)} list sizes", end="")
 
-            lst = [rand_fn() for _ in range(list_size)]
-            for name, fn in fns_by_name.items():
-                cpy = lst.copy()
-                if criteria == "time":
-                    start = time.perf_counter()
-                    fn(cpy)
-                    end = time.perf_counter()
-                    fn_benchmarks[name][i].append(end - start)
-
-                if criteria == "memory":
-                    tracemalloc.start()
-                    fn(cpy, inplace=True)
-                    _, peak = tracemalloc.get_traced_memory()
-                    tracemalloc.stop()
-                    fn_benchmarks[name][i].append(peak)
-
-        for fn in fn_benchmarks:
-            fn_benchmarks[fn][i] = stat_fn(fn_benchmarks[fn][i])
+    # Reorganize results
+    fn_benchmarks = {name: [None] * len(list_sizes) for name in fns_by_name}
+    for list_sz, stats_by_fn in results:
+        i = list_sizes.index(list_sz)
+        for name, value in stats_by_fn.items():
+            fn_benchmarks[name][i] = value
 
     return fn_benchmarks
 
 
-def plot_benchmark(list_sizes, fn_times, criteria, stat):
-    for name, times in fn_times.items():
-        plt.plot(list_sizes, times, label=name)
+def plot_benchmark(
+    list_sizes: list[int],
+    fn_benchmarks: dict[str, list[int | float]],
+    criteria: str,
+    stat: str,
+):
+    for name, benchmarks in fn_benchmarks.items():
+        plt.plot(list_sizes, benchmarks, label=name)
     plt.ylabel(f"{stat} {criteria} ({'seconds' if criteria == 'time' else 'bytes'})")
     plt.xlabel("list size")
     plt.legend()
@@ -1005,7 +1033,7 @@ if __name__ == "__main__":
         for i in range(args.resolution + 1)
     ]
     distribution = getattr(stats, args.distribution)(*args.params)
-    rand_fn = lambda: distribution.rvs()
+    rand_fn = distribution.rvs
     stat_fn = getattr(numpy, args.measure)
 
     print("\nTiming functions")
