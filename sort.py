@@ -10,6 +10,10 @@ from scipy import stats
 
 class Comparable(Protocol):
     def __lt__(self, other: Any) -> bool: ...
+    def __le__(self, other: Any) -> bool: ...
+    def __eq__(self, other: Any) -> bool: ...
+    def __ge__(self, other: Any) -> bool: ...
+    def __gt__(self, other: Any) -> bool: ...
 
 
 T = TypeVar("T", bound=Comparable)
@@ -154,6 +158,53 @@ def bubble_sort(arr: list[T], inplace=True) -> list[T]:
     return arr
 
 
+def comb_sort(arr: list[T], inplace=True) -> list[T]:
+    """
+    Perform comb sort on the input list.
+
+    Comb sort is an improvement over bubble sort. It eliminates small values
+    near the end of the list by using a gap larger than 1. The gap starts with
+    a large value and shrinks by a factor of 1.3 in every iteration until it reaches 1.
+
+    Args:
+        arr (list[T]): The input list to be sorted.
+        inplace (bool): Whether to sort the list in-place.
+
+    Returns:
+        list[T]: The sorted list.
+
+    Time complexity:
+        Best case: O(n log n) where n is the number of elements.
+        Worst case: O(n^2) where n is the number of elements.
+        Average case: O(n^2 / 2^p) where n is the number of elements and p is the number of increments.
+
+    Space complexity:
+        O(1) as sorting is done in-place.
+    """
+    if not inplace:
+        arr = arr.copy()
+
+    n = len(arr)
+    gap = n
+    shrink = 1.3
+    sorted = False
+
+    while not sorted:
+        # Update the gap
+        gap = int(gap / shrink)
+        if gap <= 1:
+            gap = 1
+            sorted = True
+
+        # Compare elements with the current gap
+        for i in range(n - gap):
+            if arr[i] > arr[i + gap]:
+                arr[i], arr[i + gap] = arr[i + gap], arr[i]
+                sorted = False
+
+    return arr
+
+
 def insertion_sort(arr: list[T], inplace=True) -> list[T]:
     """
     Perform insertion sort on the input list.
@@ -192,6 +243,47 @@ def insertion_sort(arr: list[T], inplace=True) -> list[T]:
             j -= 1
 
         arr[j + 1] = key
+
+    return arr
+
+
+def gnome_sort(arr: list[T], inplace=True) -> list[T]:
+    """
+    Perform gnome sort on the input list.
+
+    Gnome sort is an in-place, stable sorting algorithm that is similar to insertion sort,
+    but moving an element to its proper place is accomplished by a series of swaps, as in bubble sort.
+    It's called "gnome sort" because it's the way a garden gnome sorts a line of flower pots.
+
+    Args:
+        arr (list[T]): The input list to be sorted.
+        inplace (bool): Whether to sort the list in-place.
+
+    Returns:
+        list[T]: The sorted list.
+
+    Time complexity:
+        Best case: O(n) where n is the number of elements (when the list is already sorted).
+        Worst case: O(n^2) where n is the number of elements.
+        Average case: O(n^2) where n is the number of elements.
+
+    Space complexity:
+        O(1) as sorting is done in-place.
+    """
+    if not inplace:
+        arr = arr.copy()
+
+    n = len(arr)
+    index = 0
+
+    while index < n:
+        if index == 0:
+            index += 1
+        if arr[index] >= arr[index - 1]:
+            index += 1
+        else:
+            arr[index], arr[index - 1] = arr[index - 1], arr[index]
+            index -= 1
 
     return arr
 
@@ -741,9 +833,11 @@ def bucket_sort(
 fns_by_name = {
     "bogo_sort": bogo_sort,
     "bubble_sort": bubble_sort,
+    "comb_sort": comb_sort,
     "cycle_sort": cycle_sort,
     "selection_sort": selection_sort,
     "insertion_sort": insertion_sort,
+    "gnome_sort": gnome_sort,
     "shell_sort": shell_sort,
     "quicksort": quicksort,
     "heapsort": heapsort,
